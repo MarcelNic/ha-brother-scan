@@ -18,7 +18,6 @@ bashio::log.level "$(bashio::config 'log_level' 'info')"
 
 readonly FUNC="${1:-FILE}"
 readonly LOCK="/run/brother-scan/scan.lock"
-readonly OPTIONS_CACHE="/run/brother-scan/scanner-options.txt"
 DEVICE="${2:-}"
 
 resolution="$(bashio::config 'resolution')"
@@ -53,50 +52,24 @@ started=$(date +%s)
 bashio::log.info "Scan-Taste: Funktion ${FUNC}, Gerät ${DEVICE}, ${resolution} dpi, ${color_mode}, ${paper_size}, Quelle ${source_pref}"
 
 # ------------------------------------------------------------------------------
-# Vom Treiber angebotene Optionswerte ermitteln (Namen variieren je Modell)
+# Optionswerte des brother4-Backends. Die Namen stammen direkt aus
+# libsane-brother4 (0.4.11) und sind für alle brscan4-Modelle gleich.
+# Bewusst KEIN "scanimage -A": das Backend stürzt beim Auflisten der Optionen ab.
 # ------------------------------------------------------------------------------
-# Beim Start zwischengespeichert (10-brother-setup.sh), damit der Drucker hier
-# nicht zusätzlich geöffnet werden muss, während er auf den Scan wartet.
-if [[ -s "${OPTIONS_CACHE}" ]]; then
-    options="$(< "${OPTIONS_CACHE}")"
-elif options="$(timeout 60 scanimage -d "${DEVICE}" -A 2>&1)" && grep -q -- '--mode' <<< "${options}"; then
-    printf '%s\n' "${options}" > "${OPTIONS_CACHE}"
-else
-    bashio::log.warning "Optionen des Scanners nicht lesbar, nutze Standardwerte: ${options}"
-    options=""
+case "${color_mode}" in
+    color)   mode="24bit Color" ;;
+    lineart) mode="Black & White" ;;
+    *)       mode="True Gray" ;;
+esac
+readonly adf_source="Automatic Document Feeder(centrally aligned)"
+readonly fb_source="FlatBed"
+
+if [[ "$(bashio::config 'log_level')" =~ ^(debug|trace)$ ]]; then
+    export SANE_DEBUG_DLL=3
 fi
-bashio::log.trace "${options}"
 
 # Netzwerkgeräte brauchen nach dem Tasten-Ereignis einen Moment (wie im Brother-Original)
 sleep 1
-
-# Gibt die Werte einer Option zeilenweise aus, z. B. "--mode A|B|C [B]"
-option_values() {
-    sed -nE "s/^[[:space:]]*--${1} (.*) \[.*\]$/\1/p" <<< "${options}" | head -n1 | tr '|' '\n'
-}
-
-# Erster Wert aus der Liste, der einem der Muster (Priorität absteigend) entspricht
-pick() {
-    local values="$1" fallback="$2" pattern match
-    shift 2
-    for pattern in "$@"; do
-        match="$(grep -E -m1 -- "${pattern}" <<< "${values}")" && { echo "${match}"; return; }
-    done
-    echo "${fallback}"
-}
-
-modes="$(option_values mode)"
-sources="$(option_values source)"
-
-case "${color_mode}" in
-    color)   mode="$(pick "${modes}" "24bit Color" '^24bit Color$' '^24bit Color' 'Color')" ;;
-    lineart) mode="$(pick "${modes}" "Black & White" '^Black & White$' 'Lineart')" ;;
-    *)       mode="$(pick "${modes}" "True Gray" '^True Gray$' 'Gray')" ;;
-esac
-adf_source="$(pick "${sources}" "Automatic Document Feeder(left aligned)" \
-    '^Automatic Document Feeder\(centrally aligned\)$' \
-    '^Automatic Document Feeder\([^)]*\)$' '^Automatic Document Feeder' 'ADF')"
-fb_source="$(pick "${sources}" "FlatBed" '^FlatBed$' '[Ff]lat')"
 
 case "${paper_size}" in
     A5)     width=148;   height=210 ;;
@@ -111,19 +84,31 @@ pages() {
     find "${work}" -maxdepth 1 -name 'page-*.tif' -size +0 | sort
 }
 
+# Führt scanimage aus, rückt die Ausgabe ein und meldet Abstürze
+run_scanimage() {
+    local rc
+    scanimage "$@" 2>&1 | sed 's/^/    scanimage: /'
+    rc=${PIPESTATUS[0]}
+    if (( rc >= 128 )); then
+        bashio::log.error "scanimage ist abgestürzt (Signal $(( rc - 128 )))."
+    elif (( rc != 0 )); then
+        bashio::log.debug "scanimage beendet mit Code ${rc}."
+    fi
+}
+
 scan_adf() {
-    bashio::log.info "Scanne aus dem Vorlageneinzug (${adf_source}, Modus ${mode}) ..."
-    scanimage "${common[@]}" -y "${height}" --source "${adf_source}" \
-        --batch="${work}/page-%04d.tif" 2>&1 | sed 's/^/    scanimage: /'
+    bashio::log.info "Scanne aus dem Vorlageneinzug (Modus ${mode}) ..."
+    run_scanimage "${common[@]}" -y "${height}" --source "${adf_source}" \
+        --batch="${work}/page-%04d.tif"
 }
 
 scan_flatbed() {
     # Vorlagenglas ist max. 297 mm lang
     local fb_height
     fb_height=$(awk -v h="${height}" 'BEGIN { print (h > 297 ? 297 : h) }')
-    bashio::log.info "Scanne vom Vorlagenglas (${fb_source}, Modus ${mode}) ..."
-    scanimage "${common[@]}" -y "${fb_height}" --source "${fb_source}" \
-        --output-file="${work}/page-0001.tif" 2>&1 | sed 's/^/    scanimage: /'
+    bashio::log.info "Scanne vom Vorlagenglas (Modus ${mode}) ..."
+    run_scanimage "${common[@]}" -y "${fb_height}" --source "${fb_source}" \
+        --output-file="${work}/page-0001.tif"
 }
 
 case "${source_pref}" in
@@ -132,7 +117,7 @@ case "${source_pref}" in
     *)
         scan_adf
         if [[ -z "$(pages)" ]]; then
-            bashio::log.info "Vorlageneinzug leer – verwende Vorlagenglas."
+            bashio::log.info "Keine Seite aus dem Vorlageneinzug – versuche das Vorlagenglas."
             rm -f "${work}"/page-*
             scan_flatbed
         fi

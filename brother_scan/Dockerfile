@@ -31,10 +31,6 @@ RUN \
     && dpkg -i /tmp/brscan4.deb /tmp/brscan-skey.deb \
     && rm -f /etc/udev/rules.d/*brother* \
     \
-    # brscan-skey sucht die Netzwerkgeräte u. a. unter /etc/opt/brother/...
-    && mkdir -p /etc/opt/brother/scanner \
-    && ln -sfn /opt/brother/scanner/brscan4 /etc/opt/brother/scanner/brscan4 \
-    \
     # Nur das Brother-Backend laden: schneller und keine Abstürze fremder Backends
     && echo "brother4" > /etc/sane.d/dll.conf \
     && rm -f /etc/sane.d/dll.d/* \

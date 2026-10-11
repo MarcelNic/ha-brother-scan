@@ -35,6 +35,15 @@ else
     [[ -n "${host_ip}" ]] \
         || bashio::exit.nok "Konnte die eigene IP nicht ermitteln (${route}). Bitte 'host_ip' setzen."
     bashio::log.info "Host-IP automatisch ermittelt: ${host_ip} (Interface ${iface})"
+
+    # Läuft der Weg zum Drucker über einen Router, liegen beide in verschiedenen
+    # Netzen. Dann muss der Router auch UDP 54925 vom Drucker zu HA durchlassen.
+    gateway="$(sed -nE 's/.* via ([0-9.]+).*/\1/p' <<< "${route}" | head -n1)"
+    if [[ -n "${gateway}" ]]; then
+        bashio::log.warning "Drucker (${printer_ip}) und Home Assistant (${host_ip}) liegen in verschiedenen"
+        bashio::log.warning "Netzen (Router ${gateway}). Der Drucker muss ${host_ip} über UDP 54925 erreichen"
+        bashio::log.warning "können, sonst erscheint '$(bashio::config 'display_name')' nicht im Druckermenü."
+    fi
 fi
 
 if [[ "${host_ip}" == "${HASSIO_NET_PREFIX}"* ]]; then
@@ -105,18 +114,16 @@ bashio::log.info "PDF-Ziel: ${output_dir}"
 
 # Laufzeitverzeichnis für Lock-, Zähler- und Cache-Dateien
 mkdir -p /run/brother-scan
-rm -f /run/brother-scan/restarts /run/brother-scan/scanner-options.txt
+rm -f /run/brother-scan/restarts
 
 # ------------------------------------------------------------------------------
-# Optionen des Scanners einmalig abfragen (Modus- und Quellnamen variieren je
-# Modell). Schlägt das fehl, holt brother-scan es beim ersten Scan nach.
+# Prüfen, ob SANE das Brother-Backend lädt und das Gerät kennt. Nur "-L":
+# "-A"/"--help" bringen das proprietäre Backend zum Absturz.
 # ------------------------------------------------------------------------------
-if options="$(timeout 30 scanimage -d 'brother4:net1;dev0' -A 2>&1)" && grep -q -- '--mode' <<< "${options}"; then
-    printf '%s\n' "${options}" > /run/brother-scan/scanner-options.txt
-    bashio::log.info "Scanner antwortet über SANE. Verfügbare Modi/Quellen:"
-    grep -E -- '--(mode|source|resolution) ' <<< "${options}" | while read -r line; do
-        bashio::log.info "    ${line}"
-    done
+devices="$(timeout 30 scanimage -L 2>&1)"
+rc=$?
+if grep -q 'brother4:net1;dev0' <<< "${devices}"; then
+    bashio::log.info "SANE kennt den Scanner: $(grep -m1 'brother4:net1;dev0' <<< "${devices}")"
 else
-    bashio::log.warning "Scanner-Optionen konnten nicht gelesen werden (Drucker aus?): $(head -n3 <<< "${options}")"
+    bashio::log.warning "SANE listet den Scanner nicht (Code ${rc}): $(tr '\n' ' ' <<< "${devices}")"
 fi

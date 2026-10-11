@@ -3,6 +3,23 @@
 Alle nennenswerten Änderungen dieses Add-ons. Format nach
 [Keep a Changelog](https://keepachangelog.com/de/1.1.0/).
 
+## [1.0.1] - 2026-10-11
+
+### Behoben
+
+- Kein `scanimage -A` mehr: Das brother4-Backend stürzt beim Auflisten der
+  Optionen ab („dumped core“). Modus- und Quellnamen sind jetzt fest hinterlegt
+  (aus `libsane-brother4` 0.4.11 ausgelesen).
+- Überflüssigen Symlink unter `/etc/opt/brother/scanner` entfernt.
+
+### Verbessert
+
+- Warnung, wenn Drucker und Home Assistant in verschiedenen Netzen liegen.
+- Start prüft mit `scanimage -L`, ob SANE den Scanner kennt.
+- Ausgabe von `brscan-skey -l` wird zuverlässig protokolliert.
+- Abstürze von `scanimage` werden als solche gemeldet; bei `log_level: debug`
+  zusätzlich SANE-Debugausgabe.
+
 ## [1.0.0] - 2026-10-11
 
 ### Hinzugefügt

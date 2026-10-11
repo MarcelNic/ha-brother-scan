@@ -30,8 +30,17 @@ trap 'kill -TERM "${pid}" 2>/dev/null; pkill -TERM -x "${PROC}" 2>/dev/null; exi
 
 sleep 5
 if kill -0 "${pid}" 2>/dev/null; then
-    bashio::log.info "brscan-skey läuft (PID ${pid}). Registrierte Geräte:"
-    timeout 15 "${EXE}" -l 2>&1 | sed 's/^/    /' || true
+    bashio::log.info "brscan-skey läuft (PID ${pid})."
+    list="$(timeout 15 "${EXE}" -l 2>&1)"
+    rc=$?
+    if [[ -n "${list//[[:space:]]/}" ]]; then
+        bashio::log.info "Von brscan-skey überwachte Geräte:"
+        while IFS= read -r line; do
+            [[ -n "${line// }" ]] && bashio::log.info "    ${line}"
+        done <<< "${list}"
+    else
+        bashio::log.warning "brscan-skey -l liefert keine Geräte (Code ${rc})."
+    fi
 fi
 
 wait "${pid}"
