@@ -21,7 +21,7 @@ configuration:
     description: Default 300 dpi – ideal for Paperless-ngx OCR.
   color_mode:
     name: Color mode
-    description: gray (recommended), color or lineart (black & white).
+    description: gray (recommended), color (fast compressed mode) or lineart (black & white).
   source:
     name: Document source
     description: auto = document feeder if loaded, otherwise flatbed.

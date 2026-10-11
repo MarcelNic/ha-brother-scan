@@ -56,8 +56,10 @@ bashio::log.info "Scan-Taste: Funktion ${FUNC}, Gerät ${DEVICE}, ${resolution} 
 # libsane-brother4 (0.4.11) und sind für alle brscan4-Modelle gleich.
 # Bewusst KEIN "scanimage -A": das Backend stürzt beim Auflisten der Optionen ab.
 # ------------------------------------------------------------------------------
+# Farbe im Fast-Modus: Der Scanner überträgt JPEG-komprimiert, über WLAN deutlich
+# schneller; für Dokumente ist der Qualitätsunterschied nicht sichtbar.
 case "${color_mode}" in
-    color)   mode="24bit Color" ;;
+    color)   mode="24bit Color[Fast]" ;;
     lineart) mode="Black & White" ;;
     *)       mode="True Gray" ;;
 esac
@@ -84,15 +86,29 @@ pages() {
     find "${work}" -maxdepth 1 -name 'page-*.tif' -size +0 | sort
 }
 
-# Führt scanimage aus, rückt die Ausgabe ein und meldet Abstürze
+# Gibt eine Datei zeilenweise mit Einrückung auf der angegebenen Stufe aus
+log_file() {
+    local level="$1" file="$2" line
+    [[ -s "${file}" ]] || return 0
+    while IFS= read -r line; do
+        "bashio::log.${level}" "    ${line}"
+    done < "${file}"
+}
+
+# Führt scanimage aus. Die (normale) Ausgabe wie „rounded value …“ oder
+# „Document feeder out of documents“ erscheint nur bei log_level debug;
+# schlägt der Scan fehl, wird sie unten vollständig ausgegeben.
+readonly SCAN_LOG="${work}/scanimage.log"
 run_scanimage() {
     local rc
-    scanimage "$@" 2>&1 | sed 's/^/    scanimage: /'
-    rc=${PIPESTATUS[0]}
+    echo "--- scanimage ${*: -1}" >> "${SCAN_LOG}"
+    scanimage "$@" >> "${SCAN_LOG}" 2>&1
+    rc=$?
     if (( rc >= 128 )); then
+        echo "scanimage ist abgestürzt (Signal $(( rc - 128 )))." >> "${SCAN_LOG}"
         bashio::log.error "scanimage ist abgestürzt (Signal $(( rc - 128 )))."
     elif (( rc != 0 )); then
-        bashio::log.debug "scanimage beendet mit Code ${rc}."
+        echo "scanimage beendet mit Code ${rc}." >> "${SCAN_LOG}"
     fi
 }
 
@@ -126,25 +142,33 @@ esac
 
 mapfile -t page_files < <(pages)
 if (( ${#page_files[@]} == 0 )); then
-    bashio::log.error "Scan fehlgeschlagen: keine Seite erhalten. Ist der Scanner erreichbar und frei?"
+    bashio::log.error "Scan fehlgeschlagen: keine Seite erhalten. Ausgabe von scanimage:"
+    log_file error "${SCAN_LOG}"
     exit 1
 fi
+log_file debug "${SCAN_LOG}"
 bashio::log.info "${#page_files[@]} Seite(n) gescannt, erzeuge PDF ..."
 
 # ------------------------------------------------------------------------------
-# TIFF-Seiten -> PDF (Auflösung wird erzwungen, damit die Seitengröße stimmt)
+# TIFF-Seiten -> PDF (Auflösung wird erzwungen, damit die Seitengröße stimmt).
+# Meldungen von libtiff (z. B. „might cause an IFD loop“) nur bei Fehlern zeigen.
 # ------------------------------------------------------------------------------
+readonly PDF_LOG="${work}/pdf.log"
 pdf_opts=(-u i -x "${resolution}" -y "${resolution}" -r o -c "brother_scan" -t "Scan $(date '+%Y-%m-%d %H:%M')")
 if [[ "${color_mode}" == "lineart" ]]; then
-    tiffcp -c g4 "${page_files[@]}" "${work}/all.tif" || { bashio::log.error "tiffcp fehlgeschlagen."; exit 1; }
+    tiff_compression="g4"
 else
-    tiffcp -c none "${page_files[@]}" "${work}/all.tif" || { bashio::log.error "tiffcp fehlgeschlagen."; exit 1; }
+    tiff_compression="none"
     pdf_opts+=(-j -q "${quality}")
 fi
-if ! tiff2pdf "${pdf_opts[@]}" -o "${work}/scan.pdf" "${work}/all.tif" || [[ ! -s "${work}/scan.pdf" ]]; then
-    bashio::log.error "PDF-Erzeugung fehlgeschlagen."
+if ! tiffcp -c "${tiff_compression}" "${page_files[@]}" "${work}/all.tif" 2>> "${PDF_LOG}" \
+    || ! tiff2pdf "${pdf_opts[@]}" -o "${work}/scan.pdf" "${work}/all.tif" 2>> "${PDF_LOG}" \
+    || [[ ! -s "${work}/scan.pdf" ]]; then
+    bashio::log.error "PDF-Erzeugung fehlgeschlagen:"
+    log_file error "${PDF_LOG}"
     exit 1
 fi
+log_file debug "${PDF_LOG}"
 
 # ------------------------------------------------------------------------------
 # Atomar ablegen: erst als versteckte .part-Datei kopieren, dann umbenennen.

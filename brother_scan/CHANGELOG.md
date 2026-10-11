@@ -3,6 +3,17 @@
 Alle nennenswerten Änderungen dieses Add-ons. Format nach
 [Keep a Changelog](https://keepachangelog.com/de/1.1.0/).
 
+## [1.0.3] - 2026-10-11
+
+### Verbessert
+
+- Farbscans nutzen den Modus „24bit Color[Fast]“: Der Scanner überträgt
+  JPEG-komprimiert, über WLAN spürbar schneller.
+- Aufgeräumtes Protokoll: Routine-Ausgaben von `scanimage` und libtiff
+  („rounded value …“, „might cause an IFD loop“) erscheinen nur noch bei
+  `log_level: debug`. Schlägt ein Scan oder die PDF-Erzeugung fehl, wird die
+  vollständige Ausgabe als Fehler protokolliert.
+
 ## [1.0.2] - 2026-10-11
 
 ### Behoben

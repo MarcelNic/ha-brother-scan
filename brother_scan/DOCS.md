@@ -46,7 +46,7 @@ funktionieren in der Regel ebenfalls (Modell in der Konfiguration anpassen).
 | `display_name` | `HomeAssistant` | Name des Ziel-PCs im Druckerdisplay (max. 15 Zeichen) |
 | `host_ip` | leer (automatisch) | IP, die dem Drucker als Ziel gemeldet wird |
 | `resolution` | `300` | 150, 200, 300 oder 600 dpi |
-| `color_mode` | `gray` | `gray`, `color` oder `lineart` (Schwarzweiß, G4-komprimiert) |
+| `color_mode` | `gray` | `gray`, `color` (Farbe im schnellen Modus „24bit Color[Fast]“) oder `lineart` (Schwarzweiß, G4-komprimiert) |
 | `source` | `auto` | `auto` (ADF, sonst Glas), `adf` oder `flatbed` |
 | `paper_size` | `A4` | `A4`, `A5`, `Letter`, `Legal` |
 | `output_dir` | `/share/paperless/consume` | Zielordner, muss unter `/share` liegen |

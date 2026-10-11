@@ -21,7 +21,7 @@ configuration:
     description: Standard 300 dpi – optimal für die OCR in Paperless-ngx.
   color_mode:
     name: Farbmodus
-    description: gray = Graustufen (empfohlen), color = Farbe, lineart = Schwarzweiß.
+    description: gray = Graustufen (empfohlen), color = Farbe (schneller komprimierter Modus), lineart = Schwarzweiß.
   source:
     name: Vorlagenquelle
     description: auto = Vorlageneinzug, falls belegt, sonst Vorlagenglas.
