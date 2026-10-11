@@ -1,0 +1,33 @@
+#!/usr/bin/env bashio
+# shellcheck shell=bash
+# ==============================================================================
+# Wird nach jedem Ende von brscan-skey aufgerufen.
+#  - Normales Stoppen (Signal): nichts tun.
+#  - Absturz: s6 startet den Dienst neu (mit Backoff im run-Skript).
+#  - Mehr als MAX_RESTARTS Abstürze in WINDOW Sekunden: Container beenden,
+#    damit der Supervisor-Watchdog das gesamte Add-on neu startet.
+# ==============================================================================
+readonly EXIT_CODE="${1}"
+readonly SIGNAL="${2}"
+readonly RESTARTS="/run/brother-scan/restarts"
+readonly MAX_RESTARTS=5
+readonly WINDOW=600
+
+if [[ "${EXIT_CODE}" -eq 256 ]]; then
+    bashio::log.info "brscan-skey durch Signal ${SIGNAL} beendet."
+    exit 0
+fi
+
+mkdir -p "$(dirname "${RESTARTS}")"
+now=$(date +%s)
+date +%s >> "${RESTARTS}"
+recent=$(awk -v now="${now}" -v win="${WINDOW}" 'now - $1 <= win' "${RESTARTS}" | wc -l)
+
+if (( recent > MAX_RESTARTS )); then
+    bashio::log.fatal "brscan-skey ist ${recent}x in $(( WINDOW / 60 )) min abgestürzt – beende das Add-on."
+    bashio::log.fatal "Mit aktiviertem Watchdog startet Home Assistant das Add-on automatisch neu."
+    echo "${EXIT_CODE}" > /run/s6-linux-init-container-results/exitcode
+    exec /run/s6/basedir/bin/halt
+fi
+
+bashio::log.warning "brscan-skey beendet (Code ${EXIT_CODE}) – Neustart ${recent}/${MAX_RESTARTS}."

@@ -1,0 +1,42 @@
+configuration:
+  printer_ip:
+    name: Drucker-IP
+    description: Feste IPv4-Adresse des Brother-Druckers im LAN (DHCP-Reservierung empfohlen).
+  printer_model:
+    name: Druckermodell
+    description: Modellname exakt wie von Brother geschrieben, z. B. MFC-L2710DW.
+  scanner_name:
+    name: Scanner-Name
+    description: Interner Name für die brscan4-Registrierung (nur Buchstaben, Ziffern, - und _).
+  display_name:
+    name: Anzeigename am Drucker
+    description: Erscheint im Druckerdisplay als Ziel-PC bei „Scan > zu PC > Datei“ (max. 15 Zeichen).
+  host_ip:
+    name: Host-IP (optional)
+    description: >-
+      IP, die dem Drucker als Ziel gemeldet wird. Leer lassen für automatische
+      Erkennung. Nur nötig, wenn die Erkennung eine falsche Adresse wählt.
+  resolution:
+    name: Auflösung (dpi)
+    description: Standard 300 dpi – optimal für die OCR in Paperless-ngx.
+  color_mode:
+    name: Farbmodus
+    description: gray = Graustufen (empfohlen), color = Farbe, lineart = Schwarzweiß.
+  source:
+    name: Vorlagenquelle
+    description: auto = Vorlageneinzug, falls belegt, sonst Vorlagenglas.
+  paper_size:
+    name: Papierformat
+    description: Scanbereich. Legal ist nur über den Vorlageneinzug möglich.
+  output_dir:
+    name: Zielordner
+    description: Ordner unter /share, in den die PDFs gelegt werden (Paperless-Consume-Ordner).
+  filename_prefix:
+    name: Dateinamen-Präfix
+    description: Präfix vor dem Zeitstempel, z. B. scan_2026-10-11_14-03-12.pdf.
+  jpeg_quality:
+    name: JPEG-Qualität
+    description: Kompression der Seiten im PDF (30–100). Bei lineart ohne Wirkung (verlustfrei G4).
+  log_level:
+    name: Protokollstufe
+    description: debug oder trace für die Fehlersuche.

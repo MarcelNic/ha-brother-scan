@@ -1,0 +1,57 @@
+# https://developers.home-assistant.io/docs/apps/configuration#app-configuration
+name: Brother Scan to Paperless
+version: "1.0.0"
+slug: brother_scan
+description: >-
+  Scan-Taste am Brother MFC (brscan-skey) – speichert „Scan to File“ als
+  300-dpi-PDF direkt in den Paperless-ngx-Consume-Ordner.
+url: "https://github.com/MarcelNic/ha-brother-scan/tree/main/brother_scan"
+arch:
+  - amd64
+startup: application
+boot: auto
+# s6-overlay v3 aus dem Basis-Image ist das Init-System
+init: false
+timeout: 30
+
+# Erforderlich: Der Drucker sendet das Tasten-Ereignis per UDP an die IP, die
+# brscan-skey ihm per SNMP mitteilt. Details: DOCS.md -> „Netzwerk“.
+host_network: true
+
+# Eigenes AppArmor-Profil liegt in apparmor.txt
+apparmor: true
+
+# Kein Zugriff auf Supervisor-, Core- oder Docker-API, keine Geräte,
+# keine zusätzlichen Capabilities. Nur /share wird beschreibbar eingebunden.
+map:
+  - type: share
+    read_only: false
+
+options:
+  printer_ip: null
+  printer_model: MFC-L2710DW
+  scanner_name: Brother
+  display_name: HomeAssistant
+  resolution: "300"
+  color_mode: gray
+  source: auto
+  paper_size: A4
+  output_dir: /share/paperless/consume
+  filename_prefix: scan
+  jpeg_quality: 85
+  log_level: info
+
+schema:
+  printer_ip: 'match(^((25[0-5]|2[0-4][0-9]|1?[0-9]?[0-9])\.){3}(25[0-5]|2[0-4][0-9]|1?[0-9]?[0-9])$)'
+  printer_model: 'match(^[A-Za-z0-9-]{3,32}$)'
+  scanner_name: 'match(^[A-Za-z0-9_-]{1,32}$)'
+  display_name: 'match(^[A-Za-z0-9_-]{1,15}$)'
+  host_ip: 'match(^((25[0-5]|2[0-4][0-9]|1?[0-9]?[0-9])\.){3}(25[0-5]|2[0-4][0-9]|1?[0-9]?[0-9])$)?'
+  resolution: list(150|200|300|600)
+  color_mode: list(gray|color|lineart)
+  source: list(auto|adf|flatbed)
+  paper_size: list(A4|A5|Letter|Legal)
+  output_dir: 'match(^/share(/[A-Za-z0-9._-]+)+/?$)'
+  filename_prefix: 'match(^[A-Za-z0-9._-]{0,32}$)'
+  jpeg_quality: int(30,100)
+  log_level: list(trace|debug|info|notice|warning|error|fatal)

@@ -1,0 +1,42 @@
+configuration:
+  printer_ip:
+    name: Printer IP
+    description: Static IPv4 address of the Brother printer (use a DHCP reservation).
+  printer_model:
+    name: Printer model
+    description: Model name exactly as spelled by Brother, e.g. MFC-L2710DW.
+  scanner_name:
+    name: Scanner name
+    description: Internal name for the brscan4 registration (letters, digits, - and _).
+  display_name:
+    name: Name on printer display
+    description: Shown on the printer as destination PC for "Scan > to PC > File" (max. 15 characters).
+  host_ip:
+    name: Host IP (optional)
+    description: >-
+      IP announced to the printer as event destination. Leave empty for
+      auto-detection; only set it if auto-detection picks a wrong address.
+  resolution:
+    name: Resolution (dpi)
+    description: Default 300 dpi – ideal for Paperless-ngx OCR.
+  color_mode:
+    name: Color mode
+    description: gray (recommended), color or lineart (black & white).
+  source:
+    name: Document source
+    description: auto = document feeder if loaded, otherwise flatbed.
+  paper_size:
+    name: Paper size
+    description: Scan area. Legal only works with the document feeder.
+  output_dir:
+    name: Output folder
+    description: Folder below /share that receives the PDFs (Paperless consume folder).
+  filename_prefix:
+    name: Filename prefix
+    description: Prefix before the timestamp, e.g. scan_2026-10-11_14-03-12.pdf.
+  jpeg_quality:
+    name: JPEG quality
+    description: Page compression inside the PDF (30–100). Ignored for lineart (lossless G4).
+  log_level:
+    name: Log level
+    description: Use debug or trace for troubleshooting.

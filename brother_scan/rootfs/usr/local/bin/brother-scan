@@ -1,0 +1,187 @@
+#!/usr/bin/env bashio
+# shellcheck shell=bash
+# ==============================================================================
+# Wird von brscan-skey aufgerufen, sobald am Drucker „Scan“ gestartet wird.
+#   $1  Funktion am Drucker: FILE | IMAGE | OCR | EMAIL
+#   $2  SANE-Gerätename, von brscan-skey angehängt (z. B. brother4:net1;dev0)
+# Scannt alle Seiten (ADF, sonst Vorlagenglas), erzeugt ein PDF und legt es
+# atomar im Paperless-Consume-Ordner ab.
+# ==============================================================================
+set -o pipefail
+
+# Ausgaben ins Add-on-Protokoll umleiten (brscan-skey verwirft sie sonst evtl.)
+if [[ -w /proc/1/fd/1 ]]; then
+    exec >>/proc/1/fd/1 2>&1
+fi
+
+bashio::log.level "$(bashio::config 'log_level' 'info')"
+
+readonly FUNC="${1:-FILE}"
+readonly LOCK="/run/brother-scan/scan.lock"
+readonly OPTIONS_CACHE="/run/brother-scan/scanner-options.txt"
+DEVICE="${2:-}"
+
+resolution="$(bashio::config 'resolution')"
+color_mode="$(bashio::config 'color_mode')"
+source_pref="$(bashio::config 'source')"
+paper_size="$(bashio::config 'paper_size')"
+output_dir="$(bashio::config 'output_dir')"
+prefix="$(bashio::config 'filename_prefix')"
+quality="$(bashio::config 'jpeg_quality')"
+
+# Gerätename normalisieren. Je nach Aufruf fehlt der Teil nach dem Semikolon.
+if [[ "${DEVICE}" =~ ^brother4:net[0-9]+$ ]]; then
+    DEVICE="${DEVICE};dev0"
+elif [[ ! "${DEVICE}" =~ ^brother4:net[0-9]+\;dev[0-9]+$ ]]; then
+    DEVICE="brother4:net1;dev0"
+fi
+
+# ------------------------------------------------------------------------------
+# Nur ein Scan gleichzeitig
+# ------------------------------------------------------------------------------
+mkdir -p "$(dirname "${LOCK}")"
+exec 9>"${LOCK}"
+if ! flock -n 9; then
+    bashio::log.info "Scan läuft bereits – warte ..."
+    flock -w 900 9 || { bashio::log.error "Vorheriger Scan blockiert seit 15 min, Abbruch."; exit 1; }
+fi
+
+work="$(mktemp -d /tmp/brother-scan.XXXXXX)"
+trap 'rm -rf "${work}"' EXIT
+started=$(date +%s)
+
+bashio::log.info "Scan-Taste: Funktion ${FUNC}, Gerät ${DEVICE}, ${resolution} dpi, ${color_mode}, ${paper_size}, Quelle ${source_pref}"
+
+# ------------------------------------------------------------------------------
+# Vom Treiber angebotene Optionswerte ermitteln (Namen variieren je Modell)
+# ------------------------------------------------------------------------------
+# Beim Start zwischengespeichert (10-brother-setup.sh), damit der Drucker hier
+# nicht zusätzlich geöffnet werden muss, während er auf den Scan wartet.
+if [[ -s "${OPTIONS_CACHE}" ]]; then
+    options="$(< "${OPTIONS_CACHE}")"
+elif options="$(timeout 60 scanimage -d "${DEVICE}" -A 2>&1)" && grep -q -- '--mode' <<< "${options}"; then
+    printf '%s\n' "${options}" > "${OPTIONS_CACHE}"
+else
+    bashio::log.warning "Optionen des Scanners nicht lesbar, nutze Standardwerte: ${options}"
+    options=""
+fi
+bashio::log.trace "${options}"
+
+# Netzwerkgeräte brauchen nach dem Tasten-Ereignis einen Moment (wie im Brother-Original)
+sleep 1
+
+# Gibt die Werte einer Option zeilenweise aus, z. B. "--mode A|B|C [B]"
+option_values() {
+    sed -nE "s/^[[:space:]]*--${1} (.*) \[.*\]$/\1/p" <<< "${options}" | head -n1 | tr '|' '\n'
+}
+
+# Erster Wert aus der Liste, der einem der Muster (Priorität absteigend) entspricht
+pick() {
+    local values="$1" fallback="$2" pattern match
+    shift 2
+    for pattern in "$@"; do
+        match="$(grep -E -m1 -- "${pattern}" <<< "${values}")" && { echo "${match}"; return; }
+    done
+    echo "${fallback}"
+}
+
+modes="$(option_values mode)"
+sources="$(option_values source)"
+
+case "${color_mode}" in
+    color)   mode="$(pick "${modes}" "24bit Color" '^24bit Color$' '^24bit Color' 'Color')" ;;
+    lineart) mode="$(pick "${modes}" "Black & White" '^Black & White$' 'Lineart')" ;;
+    *)       mode="$(pick "${modes}" "True Gray" '^True Gray$' 'Gray')" ;;
+esac
+adf_source="$(pick "${sources}" "Automatic Document Feeder(left aligned)" \
+    '^Automatic Document Feeder\(centrally aligned\)$' \
+    '^Automatic Document Feeder\([^)]*\)$' '^Automatic Document Feeder' 'ADF')"
+fb_source="$(pick "${sources}" "FlatBed" '^FlatBed$' '[Ff]lat')"
+
+case "${paper_size}" in
+    A5)     width=148;   height=210 ;;
+    Letter) width=215.9; height=279.4 ;;
+    Legal)  width=215.9; height=355.6 ;;
+    *)      width=210;   height=297 ;;
+esac
+
+common=(-d "${DEVICE}" --mode "${mode}" --resolution "${resolution}" -l 0 -t 0 -x "${width}" --format=tiff)
+
+pages() {
+    find "${work}" -maxdepth 1 -name 'page-*.tif' -size +0 | sort
+}
+
+scan_adf() {
+    bashio::log.info "Scanne aus dem Vorlageneinzug (${adf_source}, Modus ${mode}) ..."
+    scanimage "${common[@]}" -y "${height}" --source "${adf_source}" \
+        --batch="${work}/page-%04d.tif" 2>&1 | sed 's/^/    scanimage: /'
+}
+
+scan_flatbed() {
+    # Vorlagenglas ist max. 297 mm lang
+    local fb_height
+    fb_height=$(awk -v h="${height}" 'BEGIN { print (h > 297 ? 297 : h) }')
+    bashio::log.info "Scanne vom Vorlagenglas (${fb_source}, Modus ${mode}) ..."
+    scanimage "${common[@]}" -y "${fb_height}" --source "${fb_source}" \
+        --output-file="${work}/page-0001.tif" 2>&1 | sed 's/^/    scanimage: /'
+}
+
+case "${source_pref}" in
+    adf)     scan_adf ;;
+    flatbed) scan_flatbed ;;
+    *)
+        scan_adf
+        if [[ -z "$(pages)" ]]; then
+            bashio::log.info "Vorlageneinzug leer – verwende Vorlagenglas."
+            rm -f "${work}"/page-*
+            scan_flatbed
+        fi
+        ;;
+esac
+
+mapfile -t page_files < <(pages)
+if (( ${#page_files[@]} == 0 )); then
+    bashio::log.error "Scan fehlgeschlagen: keine Seite erhalten. Ist der Scanner erreichbar und frei?"
+    exit 1
+fi
+bashio::log.info "${#page_files[@]} Seite(n) gescannt, erzeuge PDF ..."
+
+# ------------------------------------------------------------------------------
+# TIFF-Seiten -> PDF (Auflösung wird erzwungen, damit die Seitengröße stimmt)
+# ------------------------------------------------------------------------------
+pdf_opts=(-u i -x "${resolution}" -y "${resolution}" -r o -c "brother_scan" -t "Scan $(date '+%Y-%m-%d %H:%M')")
+if [[ "${color_mode}" == "lineart" ]]; then
+    tiffcp -c g4 "${page_files[@]}" "${work}/all.tif" || { bashio::log.error "tiffcp fehlgeschlagen."; exit 1; }
+else
+    tiffcp -c none "${page_files[@]}" "${work}/all.tif" || { bashio::log.error "tiffcp fehlgeschlagen."; exit 1; }
+    pdf_opts+=(-j -q "${quality}")
+fi
+if ! tiff2pdf "${pdf_opts[@]}" -o "${work}/scan.pdf" "${work}/all.tif" || [[ ! -s "${work}/scan.pdf" ]]; then
+    bashio::log.error "PDF-Erzeugung fehlgeschlagen."
+    exit 1
+fi
+
+# ------------------------------------------------------------------------------
+# Atomar ablegen: erst als versteckte .part-Datei kopieren, dann umbenennen.
+# Paperless ignoriert die .part-Datei und verarbeitet erst die fertige PDF.
+# ------------------------------------------------------------------------------
+umask 0002
+mkdir -p "${output_dir}" || { bashio::log.error "Zielordner ${output_dir} nicht verfügbar."; exit 1; }
+
+base="${prefix:+${prefix}_}$(date +%Y-%m-%d_%H-%M-%S)"
+target="${output_dir%/}/${base}.pdf"
+n=1
+while [[ -e "${target}" ]]; do
+    target="${output_dir%/}/${base}_${n}.pdf"
+    n=$((n + 1))
+done
+partial="${output_dir%/}/.$(basename "${target}").part"
+
+if cp "${work}/scan.pdf" "${partial}" && chmod 0664 "${partial}" && mv -f "${partial}" "${target}"; then
+    size=$(du -h "${target}" | cut -f1)
+    bashio::log.info "Fertig: ${target} (${#page_files[@]} Seite(n), ${size}, $(( $(date +%s) - started )) s)"
+else
+    rm -f "${partial}"
+    bashio::log.error "Konnte PDF nicht nach ${output_dir} schreiben."
+    exit 1
+fi

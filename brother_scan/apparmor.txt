@@ -1,0 +1,72 @@
+#include <tunables/global>
+
+# Eigenes Profil (Grundlage: offizielles HA-Beispiel). Der Supervisor ersetzt
+# den Profilnamen beim Laden durch <repo>_brother_scan.
+profile brother_scan flags=(attach_disconnected,mediate_deleted) {
+  #include <abstractions/base>
+
+  # Dateizugriff innerhalb des Containers; Host-Pfade sind nur über die in
+  # config.yaml freigegebenen Mounts (/data, /share) sichtbar.
+  file,
+
+  # Nur die Rechte, die root im Container für den Zielordner braucht
+  # (z. B. wenn /share/paperless/consume einem anderen Benutzer gehört).
+  capability chown,
+  capability dac_override,
+  capability fowner,
+  capability fsetid,
+
+  # Netzwerk: SNMP/UDP zum Drucker, UDP 54925 (Scan-Taste), TCP 54921 (Scandaten),
+  # HTTPS-Registrierung neuerer Modelle, Netlink für "ip route get".
+  network inet dgram,
+  network inet stream,
+  network inet6 dgram,
+  network inet6 stream,
+  network netlink raw,
+  network unix,
+
+  # Signale innerhalb des Add-ons und vom Container-Runtime (Stoppen)
+  signal (send) set=(kill,term,int,hup,cont),
+  signal (send,receive) peer=*_brother_scan,
+  signal (receive) peer=unconfined,
+  ptrace (read) peer=*_brother_scan,
+
+  # S6-Overlay
+  /init ix,
+  /bin/** ix,
+  /usr/bin/** ix,
+  /usr/sbin/** ix,
+  /usr/local/bin/** ix,
+  /run/{s6,s6-rc*,service}/** ix,
+  /package/** ix,
+  /command/** ix,
+  /etc/services.d/** rwix,
+  /etc/cont-init.d/** rwix,
+  /etc/cont-finish.d/** rwix,
+  /run/{,**} rwk,
+  /dev/tty rw,
+
+  # Bashio
+  /usr/lib/bashio/** ix,
+  /tmp/** rwk,
+
+  # Brother-Treiber und SANE
+  /opt/brother/** rwix,
+  /etc/opt/brother/** rw,
+  /usr/lib64/sane/** mr,
+  /usr/lib/x86_64-linux-gnu/** mr,
+  /etc/sane.d/** r,
+
+  # Add-on-Optionen und Zielordner
+  /data/** rw,
+  /share/** rw,
+
+  # Kein Schreiben in Kernel-Schnittstellen
+  deny /proc/sys/** w,
+  deny /proc/sysrq-trigger rwklx,
+  deny /proc/kcore rwklx,
+  deny /sys/** w,
+  deny mount,
+  deny umount,
+  deny pivot_root,
+}

@@ -1,0 +1,47 @@
+#!/usr/bin/with-contenv bashio
+# shellcheck shell=bash
+# ==============================================================================
+# Startet den Brother Scan-Key-Listener (UDP 54925) im Vordergrund.
+# s6-overlay startet den Dienst bei Absturz neu (siehe finish).
+# ==============================================================================
+readonly EXE="/opt/brother/scanner/brscan-skey/brscan-skey-exe"
+readonly PROC="brscan-skey-exe"
+readonly RESTARTS="/run/brother-scan/restarts"
+
+bashio::log.level "$(bashio::config 'log_level' 'info')"
+
+# Wachsende Wartezeit nach wiederholten Abstürzen (0, 5, 10, ... max. 60 s)
+restarts=$(wc -l 2>/dev/null < "${RESTARTS}" || echo 0)
+if (( restarts > 0 )); then
+    delay=$(( restarts * 5 > 60 ? 60 : restarts * 5 ))
+    bashio::log.info "Warte ${delay} s vor Neustart von brscan-skey (Neustart Nr. ${restarts})."
+    sleep "${delay}"
+fi
+
+# Verwaiste Lock-Dateien eines vorherigen Laufs entfernen, sonst verweigert
+# brscan-skey den Start.
+rm -f /tmp/*_lockfile_* 2>/dev/null
+pkill -x "${PROC}" 2>/dev/null && sleep 1
+
+bashio::log.info "Starte brscan-skey – warte auf Scan-Taste am Drucker ..."
+"${EXE}" &
+pid=$!
+trap 'kill -TERM "${pid}" 2>/dev/null; pkill -TERM -x "${PROC}" 2>/dev/null; exit 0' TERM INT
+
+sleep 5
+if kill -0 "${pid}" 2>/dev/null; then
+    bashio::log.info "brscan-skey läuft (PID ${pid}). Registrierte Geräte:"
+    timeout 15 "${EXE}" -l 2>&1 | sed 's/^/    /' || true
+fi
+
+wait "${pid}"
+rc=$?
+
+# Hat sich das Programm selbst in den Hintergrund verabschiedet, weiter überwachen.
+while pgrep -x "${PROC}" >/dev/null; do
+    sleep 30
+done
+
+bashio::log.error "brscan-skey wurde beendet (Exit-Code ${rc})."
+(( rc == 0 )) && rc=1
+exit "${rc}"
