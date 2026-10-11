@@ -21,6 +21,10 @@ output_dir="$(bashio::config 'output_dir')"
 bashio::log.info "Brother Scan to Paperless ${ADDON_VERSION:-unbekannt}"
 bashio::log.info "Drucker: ${printer_model} @ ${printer_ip} (SANE-Name: ${scanner_name})"
 
+# libsane-brother4 stürzt ohne /etc/protocols beim Öffnen des Scanners ab
+[[ -s /etc/protocols ]] \
+    || bashio::exit.nok "/etc/protocols fehlt im Image (Paket netbase) – Add-on neu bauen."
+
 # ------------------------------------------------------------------------------
 # Eigene IP ermitteln, die dem Drucker als Ziel für Tasten-Ereignisse gemeldet wird
 # ------------------------------------------------------------------------------

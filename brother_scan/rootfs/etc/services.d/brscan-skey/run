@@ -39,7 +39,7 @@ if kill -0 "${pid}" 2>/dev/null; then
             [[ -n "${line// }" ]] && bashio::log.info "    ${line}"
         done <<< "${list}"
     else
-        bashio::log.warning "brscan-skey -l liefert keine Geräte (Code ${rc})."
+        bashio::log.debug "brscan-skey -l liefert keine Ausgabe (Code ${rc})."
     fi
 fi
 

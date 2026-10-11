@@ -3,6 +3,16 @@
 Alle nennenswerten Änderungen dieses Add-ons. Format nach
 [Keep a Changelog](https://keepachangelog.com/de/1.1.0/).
 
+## [1.0.2] - 2026-10-11
+
+### Behoben
+
+- Absturz (Segmentation fault) bei jedem Scan: `libsane-brother4` ruft
+  `getprotobyname("TCP")` auf und dereferenziert das Ergebnis auch dann, wenn
+  `/etc/protocols` fehlt. Das Image installiert jetzt `netbase`.
+- Neustart-Meldungen zeigten UTC statt der lokalen Zeit.
+- Normales Stoppen des Add-ons wurde als Absturz von `brscan-skey` gezählt.
+
 ## [1.0.1] - 2026-10-11
 
 ### Behoben

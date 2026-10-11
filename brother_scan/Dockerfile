@@ -15,9 +15,12 @@ ARG BRSCAN_SKEY_SHA256="6360f7e6fbb55dda9dcd05a030dca12e56f8d8ce0377d4a836297084
 
 RUN \
     apt-get update \
+    # netbase liefert /etc/protocols: Ohne die Datei liefert getprotobyname("TCP")
+    # NULL und libsane-brother4 stürzt beim Öffnen des Netzwerkscanners ab.
     && apt-get install -y --no-install-recommends \
         iproute2 \
         libtiff-tools \
+        netbase \
         procps \
         sane-utils \
     \

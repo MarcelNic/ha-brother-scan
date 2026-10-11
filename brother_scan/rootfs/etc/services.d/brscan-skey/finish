@@ -1,4 +1,4 @@
-#!/usr/bin/env bashio
+#!/usr/bin/with-contenv bashio
 # shellcheck shell=bash
 # ==============================================================================
 # Wird nach jedem Ende von brscan-skey aufgerufen.
@@ -15,6 +15,12 @@ readonly WINDOW=600
 
 if [[ "${EXIT_CODE}" -eq 256 ]]; then
     bashio::log.info "brscan-skey durch Signal ${SIGNAL} beendet."
+    exit 0
+fi
+
+# Add-on wird gestoppt oder aktualisiert: kein Absturz, kein Neustart
+if [[ "$(s6-svstat -o wantedup . 2>/dev/null)" == "false" ]]; then
+    bashio::log.info "brscan-skey gestoppt."
     exit 0
 fi
 
